@@ -1,0 +1,223 @@
+---
+title: "Predicting Income in NYC"
+author:
+- Rohan Dhingra
+- rdhingra
+output:
+  pdf_document:
+    toc: yes
+  word_document:
+    toc: yes
+  html_document:
+    code_folding: show
+    theme: cosmo
+    toc: yes
+    toc_float: yes
+optin: TRUE
+---
+
+```{r, include=FALSE}
+###########################
+# STYLE EDITS: IGNORE THIS
+###########################
+knitr::opts_chunk$set(message = FALSE) # include this if you don't want markdown to knit messages
+knitr::opts_chunk$set(warning = FALSE) # include this if you don't want markdown to knit warnings
+knitr::opts_chunk$set(echo = TRUE) # set echo=FALSE to hide code from html output
+```
+
+
+```{r, echo=FALSE}
+
+library("knitr")
+library("kableExtra")
+library("pander")
+library("readr")
+library("magrittr")
+library("car")
+library("interactions")
+library("leaps")
+
+```
+
+```{r, echo=FALSE}
+
+# TO BEGIN:
+# 
+# 1) Read the "project1-instructions" on 
+#    Canvas->Files->project-materials->project1-materials:
+# https://canvas.cmu.edu/files/12495688/download?download_frd=1
+# 
+# 2) Load the packages by running the previous chunk.
+#
+# 3) To load the possible datasets, run the following:
+
+bikes <- readr::read_csv("bikes.csv")
+court <- readr::read_csv("court.csv")
+nyc <- readr::read_csv("nyc.csv")
+social <- readr::read_csv("social.csv")
+
+# 4) Read the corresponding data descriptions
+#    in the "data-story-prompts" folder on: 
+#    Canvas->files->project-materials->project1-materials:
+# https://canvas.cmu.edu/courses/45171/files/folder/project-materials/project1-materials/data-story-prompts
+
+```
+
+# Introduction
+
+
+New York City is a global economic hub with a diverse and competitive job market. As one of the most expensive cities in the world, income disparities are shaped by various social and economic factors. In this paper, we examine how age, years spent in NYC, and housing maintenance deficiencies influence income levels. Through data analysis, we aim to identify key predictors of financial outcomes in the city.
+
+# Exploratory Data Analysis
+
+## Data
+
+In this data by The New York City Housing and Vacancy Survey, we analyze a random sample of 299 NYC residents and 4 variables. In our study, we examine the relationship between Income and three explanatory variables: Age, Maintenance Deficiencies (MaintenanceDef), and the year the respondent moved to NYC (NYCMove). To summarize the variables, we do as follows:
+
+Income: Annual Income, measured quantitatively in U.S. Dollars
+Age: Respondent age (in years)
+MaintenanceDef: number of maintenance deficiencies of the residence, between 2002 and 2005
+NYCMove: the year the respondent moved to New York City
+
+The first lines of the data set appear as follows:
+```{r}
+head(nyc)
+```
+## Unavariate Exploration
+
+We now use histograms to explore and analyze the distribution of each of the four variables. 
+
+```{r}
+hist(nyc$Income, 
+     main = "Distribution of Income", 
+     xlab = "Income (US Dollars")
+hist(nyc$Age, 
+     main = "Distribution of Age", 
+     xlab = "Age")
+hist(nyc$MaintenanceDef, 
+     main = "Distribution of Maintenance Deficiencies", 
+     xlab = "Maintenance of Deficiencies")
+hist(nyc$NYCMove, 
+     main = "Distribution of NYC Move year", 
+     xlab = "NYC Move Year")
+```
+
+Numerical Summaries are listed here too:
+```{r}
+summary(nyc)
+```
+```{r}
+sd(nyc$Income)
+sd(nyc$Age)
+sd(nyc$MaintenanceDef)
+sd(nyc$NYCMove)
+```
+
+
+Using both the histograms and the numerical summaries, we can see the following: 
+
+The distribution of Income is slightly right skewed, with the median being less than the mean. The income distribution could be considered unimodal or bimodal. It is centered around 40,000 USD with a Standard Deviation of 24,201.04 USD. 
+
+The distribution of Age is slightly right skewed with a median of 49 and a mean of 50. It is unimodal. It is centered around 50 years old with a standard deviation of 12.4 years. 
+
+The distribution of Maintenance Deficiencies is highly right skewed and unimodal. It has a mean of 2, but a maximum of 8, with a standard deviation of 1.6 Maintenance Deficiencies. O Very few people had maintenance deficiencies of 2 or higher.
+
+The distribution of Year Moved to NYC is bimodal and left skewed. People have moved to NYC more recently than earlier. The mean year is 1983, with a median year of 1985. The standard deviation is 14.1 years. 
+
+## Bivariate Exploration
+```{r}
+plot(Income ~ Age,
+     data=nyc,
+     main = "Income vs Age", 
+     xlab = "Age", 
+     ylab = "Income")
+plot(Income ~ MaintenanceDef,
+     data=nyc,
+     main = "Income vs Maintenance Deficiencies", 
+     xlab = "Maintenance Deficiencies", 
+     ylab = "Income")
+plot(Income ~ NYCMove,
+     data=nyc,
+     main = "Income vs Year Moved to NYC", 
+     xlab = "Year Moved to NYC", 
+     ylab = "Income")
+```
+
+
+Through our analysis of the scatter plots, we can see that Age is weakely positively associated with Income, although it is difficult to say how much. As Age increases, Income increases. We can also see that there might be a slight negative association between the number of Maintenance Deficiencies and Income. As the the number of Maintenance Deficiencies increases, Income decreases. Lastly, we can see a weakly positive association between the Year someone moved to NYC and their income. As the Year increases, income also increases.   
+
+# Modeling
+
+Now that we have looked at the variables individually and their relationship to Income, we will build a model as a linear regression to predict Income based off our three explanatory variables. However, our income histogram appears to be slightly right skewed. We now transform the Income variable as follows: 
+```{r}
+nyc$log_income <- log(nyc$Income)
+```
+This will hopefully reduce the affects of skewness on our regression. We now investigate for potential multicollinearity, as this could be problematic for our model.
+
+```{r}
+nyc.loginc <- subset(nyc,
+                         select=c(log_income, Age, MaintenanceDef, NYCMove))
+```
+
+```{r}
+pairs(nyc.loginc)
+```
+
+We can see that there might be some linearity between Age and NYCMove, but it is not too strong of a linear relationship and doesn't justify removal. 
+
+We now build the model now with log of income as our response variable:
+```{r}
+log_inc.model <- lm(log_income ~ Age + MaintenanceDef + NYCMove, data = nyc.loginc)
+```
+
+We also  look at the vifs to get a quantitative number to determine further the multicollinearity and remove any potential issues for the model.
+
+```{r}
+car::vif(log_inc.model)
+```
+
+As we can see, none of the VIFs are above 2.5, so we do not need to remove any of the variables and can proceed with our current regression model. Below, we demonstrate the residual plots of our regression model. 
+```{r}
+plot(log_inc.model, which=1)
+```
+
+As we can see on the residual plot, apart from one outlier, the mean of the residuals is approximately centered around 0, the spread is fairly constant, and it appears to be independent with no decipherable pattern. 
+
+In the qq plot below, besides a few outliers on the lower and upper ends of the plot which could be concerning, it appears to be relatively normal, following a linear pattern.
+
+```{r}
+plot(log_inc.model, which=2)
+```
+
+Our regression model summary is shown below:
+```{r}
+summary(log_inc.model)
+```
+We can see that this has a very low R^2 at only .05843. Much of the data cannot be explained by this relationship. However, comparing to a non log income model, this is a much more reliable model due to the right skewness of the normal, non-log income histogram. Additionally, and very importantly, we can see the model overall is significant, with a F-test p-value of 0.0004855.
+
+Surprisingly, Age and NYCMove variables have slight negative coefficient values. However, using log of income instead of normal income may cause these changes. 
+
+In our linear regression model, our model was significant with a p-value well below 0.05, with low multicollinearity (vifs below 2.5), and residual plots meeting all assumptions. We believe, when compared with other models using these variables and various transformations, this is the most approproiate model to utilize when attempting to predict income.   
+
+# Prediction
+
+The client is interested in predicting the income for a household with three maintenance
+deficiencies, whose respondent’s age is 53 and who moved to NYC in 1987.
+We can compute this using our model:
+```{r}
+13.200395-(0.001381*53)-(0.106257*3)-(0.001249*1987)
+```
+Since this is the log of income, we can do the following calculation to get the amount of income, in US Dollars.
+```{r}
+exp(10.32667)
+```
+
+The predicted income for someone with a household with three maintenance deficiencies, whose respondent’s age is 53 and who moved to NYC in 1987, based on our constructed model, is $30,536.26.
+
+# Discussion
+
+Overall, based on our findings, it does not seem that age or the year that someone moved to NYC are necessarily reliable predictors of their income. However, maintenance deficiencies have a significant negative relationship with income. This could be due to the fact that people with worse quality housing are more likely to have maintenance deficiencies within their household, and people with worse quality housing are more likely to earn less income. A right skewed income distribution was no suprise, as earning lots of money at the upper bound of the distribution is much more rare than someone earning on the lower bound of income.
+
+In our QQ plots, there were some concerning outliers, which could be necessary to investigate, and may have contributed to our low R^2. 
+
+Wealth inequality and predictors of such inequality is a very pressing topic of our society. Nowhere is this wealth gap more apparent than in NYC, with its homeless population taking shelter under the grandeous skyscrapers of the billionaire class. Wealth inequality is one of the first signs of a deteriorating society, and we must do more to address this disparity. In the future, we should look into other potential predictors of income, such as race, gender, neighborhood within NYC, education levels, and immigration status.  
